@@ -101,17 +101,17 @@ h1, h2, h3, .logo {
 
 .nav-links {
     display: flex;
-    align-items: center;   /* center vertically */
-    height: 60px;          /* MUST match navbar */
+    align-items: center;   
+    height: 60px;         
     gap: 25px;
 }
 
 .nav-links a {
-    display: flex;              /* 🔥 KEY FIX */
-    align-items: center;        /* center text vertically */
+    display: flex;              
+    align-items: center;        
     justify-content: center;
 
-    height: 100%;               /* fill navbar height */
+    height: 100%;              
 
     text-decoration: none;
     color: var(--brown);
