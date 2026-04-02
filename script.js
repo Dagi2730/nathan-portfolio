@@ -1,147 +1,225 @@
-// Initialize AOS
-AOS.init({ 
-    duration: 800, 
-    once: false, 
-    mirror: true,
-    offset: 50,
-    easing: 'ease-out'
-});
+const NAV_INJECT_CONTAINER_ID = 'navbar-container';
+const FOOTER_INJECT_CONTAINER_ID = 'footer-container';
+const NAV_BREAKPOINT_PX = 768;
 
-// Get DOM elements
-const container = document.getElementById('scroll-container');
-const bar = document.getElementById('prog-bar');
-const menuToggle = document.getElementById('menu-toggle');
-const navLinks = document.getElementById('nav-links');
-const navItems = document.querySelectorAll('.nav-links a');
+function getCurrentPageId() {
+    const body = document.body;
+    const fromData = body?.dataset?.page;
+    if (fromData) return fromData;
 
-// Mobile Menu Toggle
-if (menuToggle) {
+    const filename = (window.location.pathname.split('/').pop() || '').toLowerCase();
+    const withoutExt = filename.replace(/\.html$/i, '');
+    return withoutExt || 'index';
+}
+
+async function injectNavbar() {
+    const container = document.getElementById(NAV_INJECT_CONTAINER_ID);
+    if (!container) return;
+
+    const pageId = getCurrentPageId();
+
+    // Prefer loading from navbar.html so we have one source of truth.
+    // If `fetch` is blocked (e.g., file://), fall back to embedded markup.
+    let navbarHtml = null;
+    try {
+        const res = await fetch('navbar.html', { cache: 'no-store' });
+        if (res.ok) navbarHtml = await res.text();
+    } catch {
+        navbarHtml = null;
+    }
+
+    const fallback = `
+        <nav class="mirror-nav" aria-label="Primary navigation">
+            <div class="logo" aria-label="Nathan Tadesse">NATHAN TADESSE</div>
+
+            <button
+                class="menu-toggle"
+                id="menu-toggle"
+                type="button"
+                aria-label="Open navigation menu"
+                aria-expanded="false"
+                aria-controls="navLinks"
+            >
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+
+            <div class="nav-links" id="navLinks">
+                <a href="index.html" data-page="index">HOME</a>
+                <a href="summary.html" data-page="summary">SUMMARY</a>
+                <a href="experience.html" data-page="experience">EXPERIENCE</a>
+
+                <div class="nav-dropdown" data-dropdown="niches">
+                    <button
+                        class="dropdown-toggle"
+                        type="button"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                        aria-controls="niches-menu"
+                    >
+                        Niches <span class="dropdown-caret" aria-hidden="true"></span>
+                    </button>
+
+                    <div class="dropdown-menu" id="niches-menu" role="menu" aria-label="Niches submenu">
+                        <a href="it-pm.html" data-page="it-pm" role="menuitem">IT Project Management</a>
+                        <a href="non-profit-pm.html" data-page="non-profit-pm" role="menuitem">Non-Profit / Impact PM</a>
+                        <a href="construction-pm.html" data-page="construction-pm" role="menuitem">Construction PM</a>
+                    </div>
+                </div>
+
+                <a href="skills.html" data-page="skills">SKILLS</a>
+                <a href="education.html" data-page="education">EDUCATION</a>
+                <a href="acknowledgments.html" data-page="acknowledgments">ACKNOWLEDGMENTS</a>
+                <a href="contact.html" data-page="contact">CONTACT</a>
+            </div>
+        </nav>
+    `;
+
+    container.innerHTML = navbarHtml || fallback;
+
+    const links = Array.from(container.querySelectorAll('a[data-page]'));
+    links.forEach((a) => {
+        if ((a.dataset.page || '') === pageId) a.classList.add('active');
+    });
+
+    // Niches dropdown (desktop hover + click, mobile vertical inside hamburger menu)
+    const dropdown = container.querySelector('.nav-dropdown[data-dropdown="niches"]') || container.querySelector('.nav-dropdown');
+    const dropdownToggle = dropdown?.querySelector('.dropdown-toggle');
+    const closeDropdown = () => {
+        if (!dropdown) return;
+        dropdown.classList.remove('open');
+        if (dropdownToggle) dropdownToggle.setAttribute('aria-expanded', 'false');
+    };
+    const openDropdown = () => {
+        if (!dropdown) return;
+        dropdown.classList.add('open');
+        if (dropdownToggle) dropdownToggle.setAttribute('aria-expanded', 'true');
+    };
+    if (dropdownToggle) {
+        dropdownToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = dropdown.classList.contains('open');
+            if (isOpen) closeDropdown();
+            else openDropdown();
+        });
+    }
+
+    // Mobile hamburger menu behavior.
+    const menuToggle = container.querySelector('#menu-toggle');
+    const navLinks = container.querySelector('#navLinks');
+    if (!menuToggle || !navLinks) return;
+
+    const closeMenu = () => {
+        menuToggle.classList.remove('active');
+        navLinks.classList.remove('active');
+        closeDropdown();
+        menuToggle.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+    };
+
+    const openMenu = () => {
+        menuToggle.classList.add('active');
+        navLinks.classList.add('active');
+        menuToggle.setAttribute('aria-expanded', 'true');
+        document.body.style.overflow = 'hidden';
+    };
+
     menuToggle.addEventListener('click', () => {
-        menuToggle.classList.toggle('active');
-        navLinks.classList.toggle('active');
-        document.body.style.overflow = navLinks.classList.contains('active') ? 'hidden' : '';
+        const isOpen = navLinks.classList.contains('active');
+        if (isOpen) closeMenu();
+        else openMenu();
+    });
+
+    // Close menu when navigating.
+    links.forEach((link) => {
+        link.addEventListener('click', () => closeMenu());
+    });
+
+    // Close menu when clicking outside.
+    document.addEventListener('click', (e) => {
+        const isMenuOpen = navLinks.classList.contains('active');
+        if (isMenuOpen && !navLinks.contains(e.target) && !menuToggle.contains(e.target)) closeMenu();
+
+        // Close dropdown when clicking outside dropdown.
+        if (dropdown && dropdown.classList.contains('open') && !dropdown.contains(e.target)) closeDropdown();
+    });
+
+    // If we resize to desktop, ensure menu is closed.
+    window.addEventListener('resize', () => {
+        if (window.innerWidth >= NAV_BREAKPOINT_PX && navLinks.classList.contains('active')) {
+            closeMenu();
+        }
+        if (window.innerWidth >= NAV_BREAKPOINT_PX) closeDropdown();
     });
 }
 
-// Close mobile menu when clicking a link
-navItems.forEach(link => {
-    link.addEventListener('click', () => {
-        if (window.innerWidth <= 599) {
-            menuToggle.classList.remove('active');
-            navLinks.classList.remove('active');
-            document.body.style.overflow = '';
-        }
-    });
-});
+async function injectFooter() {
+    const container = document.getElementById(FOOTER_INJECT_CONTAINER_ID);
+    if (!container) return;
 
-// Close mobile menu when clicking outside
-document.addEventListener('click', (e) => {
-    if (window.innerWidth <= 599) {
-        if (!navLinks.contains(e.target) && !menuToggle.contains(e.target) && navLinks.classList.contains('active')) {
-            menuToggle.classList.remove('active');
-            navLinks.classList.remove('active');
-            document.body.style.overflow = '';
-        }
+    let footerHtml = null;
+    try {
+        const res = await fetch('footer.html', { cache: 'no-store' });
+        if (res.ok) footerHtml = await res.text();
+    } catch {
+        footerHtml = null;
     }
-});
 
-// Update progress bar on scroll
-container.addEventListener('scroll', () => {
-    const totalHeight = container.scrollHeight - container.clientHeight;
-    const progress = (container.scrollTop / totalHeight) * 100;
-    bar.style.width = progress + "%";
-    
-    if (window.requestAnimationFrame) {
-        window.requestAnimationFrame(updateActiveNavLink);
-    } else {
-        updateActiveNavLink();
-    }
-}, { passive: true });
+    const fallback = `
+        <footer class="site-footer" aria-label="Site footer">
+            <div class="footer-credit">
+                Prepared by
+                <a href="http://www.linkedin.com/in/dagmawit-andargachew-b05140239" target="_blank" rel="noopener noreferrer">Dagmawit Andargachew</a>
+                &amp;
+                <a href="http://LinkedIn.com/in/meklit-mengestu-tech" target="_blank" rel="noopener noreferrer">Meklit Mengistu</a>
+            </div>
+        </footer>
+    `;
 
-// Smooth navigation for anchor links
-navItems.forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const targetId = this.getAttribute('href');
-        const target = document.querySelector(targetId);
-        
-        if (target) {
-            target.scrollIntoView({ 
-                behavior: 'smooth',
-                block: 'start'
-            });
-            history.pushState(null, null, targetId);
-        }
-    });
-});
-
-// Update active nav link
-function updateActiveNavLink() {
-    const sections = document.querySelectorAll('.page-section');
-    let currentSection = '';
-    
-    sections.forEach((section) => {
-        const sectionTop = section.offsetTop;
-        const sectionBottom = sectionTop + section.offsetHeight;
-        const scrollPosition = container.scrollTop + 150;
-        
-        if (scrollPosition >= sectionTop && scrollPosition < sectionBottom) {
-            currentSection = section.getAttribute('id');
-        }
-    });
-    
-    navItems.forEach(link => {
-        link.style.opacity = '0.6';
-        link.style.fontWeight = '400';
-        
-        const linkHash = link.getAttribute('href').substring(1);
-        
-        if (linkHash === currentSection) {
-            link.style.opacity = '1';
-            link.style.fontWeight = '700';
-        } else if ((currentSection === 'exp-1' || currentSection === 'exp-2') && linkHash === 'exp-1') {
-            link.style.opacity = '1';
-            link.style.fontWeight = '700';
-        }
-    });
+    container.innerHTML = footerHtml || fallback;
 }
 
-// Debounced resize handler
-let resizeTimeout;
-window.addEventListener('resize', () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-        AOS.refresh();
-        let vh = window.innerHeight * 0.01;
-        document.documentElement.style.setProperty('--vh', `${vh}px`);
-        
-        if (window.innerWidth > 599) {
-            if (navLinks.classList.contains('active')) {
-                menuToggle.classList.remove('active');
-                navLinks.classList.remove('active');
-                document.body.style.overflow = '';
-            }
+async function loadPageContent() {
+    const contentSrc = document.body?.dataset?.contentSrc;
+    if (!contentSrc) return;
+
+    const targetId = document.body?.dataset?.contentTargetId || 'page-content';
+    const target = document.getElementById(targetId);
+    if (!target) return;
+
+    try {
+        const res = await fetch(contentSrc, { cache: 'no-store' });
+        if (res.ok) {
+            const html = await res.text();
+            target.innerHTML = html;
         }
-    }, 250);
-});
+    } catch {
+        // If content can't be fetched (e.g., file:// restrictions), keep existing markup.
+    }
+}
 
-// Initialize on load
-window.addEventListener('load', () => {
-    AOS.refresh();
-    
-    setTimeout(() => {
-        const totalHeight = container.scrollHeight - container.clientHeight;
-        const progress = (container.scrollTop / totalHeight) * 100;
-        bar.style.width = progress + "%";
-        updateActiveNavLink();
-    }, 300);
-});
-
-// Fix for Safari vh issue
-const setVh = () => {
-    let vh = window.innerHeight * 0.01;
-    document.documentElement.style.setProperty('--vh', `${vh}px`);
-};
-
+// Safari vh fix (keeps iOS address bar from breaking some layouts)
+function setVh() {
+    document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+}
 window.addEventListener('resize', setVh);
 setVh();
+
+window.addEventListener('DOMContentLoaded', async () => {
+    if (window.AOS) {
+        AOS.init({
+            duration: 800,
+            once: false,
+            mirror: true,
+            offset: 50,
+            easing: 'ease-out',
+        });
+    }
+
+    await injectNavbar();
+    await loadPageContent();
+    await injectFooter();
+
+    if (window.AOS) AOS.refresh();
+});
